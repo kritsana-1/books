@@ -1,0 +1,35 @@
+# Dependencies (พวกนี้หนักและโหลดใหม่ได้)
+/node_modules
+/.pnp
+.pnp.js
+
+# Next.js Build Output (ไฟล์ที่ระบบสร้างขึ้นตอนรัน ไม่ต้องเก็บ)
+/.next/
+/out/
+/build
+
+# Environment Variables (ความลับสุดยอด! ห้ามเอาขึ้นเด็ดขาด)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Debug Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# ถ้าคุณมี Python Virtual Environment จากก่อนหน้านี้
+.venv/
+venv/
+__pycache__/
