@@ -1,3 +1,4 @@
+'use client';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { getCurrentUser, getUserProfileByAuthId } from '@/lib/supabase';
