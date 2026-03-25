@@ -48,6 +48,12 @@ export default function Navbar() {
             >
               Community
             </Link>
+            <Link
+              href="/library"
+              className="text-neutral-600 hover:text-primary-500 font-medium text-sm"
+            >
+              My Library
+            </Link>
           </div>
 
           {/* Auth & User Menu */}
@@ -106,6 +112,12 @@ export default function Navbar() {
               className="block px-4 py-2 text-neutral-600 hover:text-primary-500 hover:bg-neutral-50 rounded-lg font-medium"
             >
               Community
+            </Link>
+            <Link
+              href="/library"
+              className="block px-4 py-2 text-neutral-600 hover:text-primary-500 hover:bg-neutral-50 rounded-lg font-medium"
+            >
+              My Library
             </Link>
             <div className="border-t border-neutral-200 pt-3">
               <Link

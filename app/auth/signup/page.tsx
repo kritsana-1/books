@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Heart, Github, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'react-icons/fa';
+import { signUp, signInWithGoogle, signInWithGithub } from '@/lib/supabase';
+import { Heart, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
+import { FaGithub } from 'react-icons/fa';
 
 export default function SignUp() {
   const router = useRouter();
@@ -60,16 +62,10 @@ export default function SignUp() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual Supabase sign-up call
-      // const { error } = await signUp(formData.email, formData.password, {
-      //   full_name: formData.fullName,
-      // });
-      // if (error) throw error;
-      
-      console.log('Sign up with:', formData);
-      // router.push('/auth/verify-email');
+      await signUp(formData.email, formData.password);
+      router.push('/auth/signin');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign up');
+      setError(err instanceof Error ? err.message : 'Failed to sign up. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -80,15 +76,10 @@ export default function SignUp() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual Supabase OAuth call
-      // const { error } = await signInWithGoogle();
-      // if (error) throw error;
-      
-      console.log('Sign up with Google');
-      // router.push('/');
+      await signInWithGoogle();
+      router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign up');
-    } finally {
+      setError(err instanceof Error ? err.message : 'Failed to sign up with Google');
       setIsLoading(false);
     }
   };
@@ -98,15 +89,10 @@ export default function SignUp() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual Supabase OAuth call
-      // const { error } = await signInWithGithub();
-      // if (error) throw error;
-      
-      console.log('Sign up with GitHub');
-      // router.push('/');
+      await signInWithGithub();
+      router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign up');
-    } finally {
+      setError(err instanceof Error ? err.message : 'Failed to sign up with GitHub');
       setIsLoading(false);
     }
   };
@@ -266,7 +252,7 @@ export default function SignUp() {
               disabled={isLoading}
               className="btn btn-outline flex items-center justify-center gap-2"
             >
-              <Github className="w-5 h-5" />
+              <FaGithub className="w-5 h-5" />
               <span className="hidden sm:inline">GitHub</span>
             </button>
           </div>

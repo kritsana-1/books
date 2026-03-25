@@ -1,28 +1,67 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
-  User,
-  Mail,
-  MapPin,
-  Camera,
   BookOpen,
   Heart,
   MessageCircle,
   Award,
   Edit2,
   LogOut,
-} from 'react-icons/fa';
+  Camera,
+} from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/auth-context';
+import { updateUserProfile, getUserReadingStats, setReadingGoal, getReadingGoal } from '@/lib/supabase';
 
 export default function ProfilePage() {
+  const router = useRouter();
+  const { user, profile, signOut: authSignOut } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    fullName: 'John Doe',
-    email: 'john@example.com',
-    location: 'San Francisco, CA',
-    bio: 'Book lover, coffee enthusiast, and lifelong learner. I love exploring different genres and discovering new authors.',
+  const [isSaving, setIsSaving] = useState(false);
+  const [readingStats, setReadingStats] = useState({
+    total_favorites: 0,
+    total_read: 0,
+    average_rating: 0,
+    total_rated: 0,
   });
+  const [readingGoal, setReadingGoalState] = useState<{ goal_count: number; goal_year: number } | null>(null);
+  const [goalCount, setGoalCount] = useState(50);
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    username: profile?.username || '',
+    first_name: profile?.first_name || '',
+    last_name: profile?.last_name || '',
+    bio: profile?.bio || '',
+  });
+
+  useEffect(() => {
+    if (!user) {
+      router.push('/auth/signin');
+    } else if (profile) {
+      loadReadingStats();
+    }
+  }, [user, router, profile]);
+
+  const loadReadingStats = async () => {
+    if (!profile) return;
+    try {
+      const stats = await getUserReadingStats(profile.user_id);
+      setReadingStats(stats);
+      
+      const currentYear = new Date().getFullYear();
+      const goal = await getReadingGoal(profile.user_id, currentYear);
+      if (goal) {
+        setReadingGoalState(goal);
+        setGoalCount(goal.goal_count);
+      }
+    } catch (err) {
+      console.error('Error loading reading stats:', err);
+    }
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -34,10 +73,83 @@ export default function ProfilePage() {
     }));
   };
 
-  const handleSave = () => {
-    // TODO: Save profile changes to Supabase
-    setIsEditing(false);
+  const handleSave = async () => {
+    if (!profile) return;
+
+    setIsSaving(true);
+    try {
+      await updateUserProfile(profile.user_id, {
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        bio: formData.bio,
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Failed to save profile changes');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  const handleSignOut = async () => {
+    try {
+      await authSignOut();
+      router.push('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  const handleSaveReadingGoal = async () => {
+    if (!profile || !goalCount || goalCount < 1) return;
+
+    setIsSavingGoal(true);
+    try {
+      const currentYear = new Date().getFullYear();
+      await setReadingGoal(profile.user_id, currentYear, goalCount);
+      setReadingGoalState({ goal_count: goalCount, goal_year: currentYear });
+      setIsEditingGoal(false);
+      setShareMessage('Reading goal updated successfully!');
+      setTimeout(() => setShareMessage(null), 2000);
+    } catch (err) {
+      console.error('Error saving goal:', err);
+      setShareMessage('Failed to save goal.');
+    } finally {
+      setIsSavingGoal(false);
+    }
+  };
+
+  const handleShareStats = async () => {
+    const statsText = `📚 My 2026 Reading Stats:\n• Books Read: ${readingStats.total_read}${
+      readingGoal ? `/${readingGoal.goal_count}` : ''
+    }\n• Favorites: ${readingStats.total_favorites}\n• Avg Rating: ${readingStats.average_rating}⭐\n\nJoin me on BookHub! 🎉`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'My Reading Stats',
+          text: statsText,
+        });
+      } catch (err) {
+        console.log('Share cancelled');
+      }
+    } else {
+      navigator.clipboard.writeText(statsText);
+      setShareMessage('Stats copied to clipboard!');
+      setTimeout(() => setShareMessage(null), 2000);
+    }
+  };
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen bg-neutral-50 pt-20">
+        <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+          Loading profile...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 pt-20">
@@ -52,8 +164,8 @@ export default function ProfilePage() {
             {/* Avatar */}
             <div className="flex flex-col sm:flex-row sm:items-end sm:gap-6 mb-8 -mt-16">
               <div className="relative z-10 mb-4 sm:mb-0">
-                <div className="w-32 h-32 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                  <User className="text-white w-16 h-16" />
+                <div className="w-32 h-32 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center text-white text-4xl font-bold">
+                  {(profile?.first_name?.[0] || formData.username?.[0] || 'U').toUpperCase()}
                 </div>
                 <button className="absolute bottom-0 right-0 bg-primary-500 hover:bg-primary-600 text-white p-3 rounded-full shadow-lg transition-colors">
                   <Camera className="w-5 h-5" />
@@ -62,11 +174,8 @@ export default function ProfilePage() {
 
               {/* Profile Info */}
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-neutral-900">{formData.fullName}</h1>
-                <p className="text-neutral-600 flex items-center gap-2 mt-2">
-                  <MapPin className="w-4 h-4" />
-                  {formData.location}
-                </p>
+                <h1 className="text-3xl font-bold text-neutral-900">{profile?.first_name} {profile?.last_name}</h1>
+                <p className="text-neutral-600 mt-1">@{profile?.username}</p>
               </div>
 
               {/* Action Buttons */}
@@ -75,9 +184,10 @@ export default function ProfilePage() {
                   <>
                     <button
                       onClick={handleSave}
+                      disabled={isSaving}
                       className="btn btn-primary"
                     >
-                      Save Changes
+                      {isSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                     <button
                       onClick={() => setIsEditing(false)}
@@ -95,7 +205,7 @@ export default function ProfilePage() {
                       <Edit2 className="w-4 h-4" />
                       Edit Profile
                     </button>
-                    <button className="btn btn-outline flex items-center gap-2">
+                    <button onClick={handleSignOut} className="btn btn-outline flex items-center gap-2">
                       <LogOut className="w-4 h-4" />
                       Sign Out
                     </button>
@@ -117,7 +227,7 @@ export default function ProfilePage() {
                 />
               </div>
             ) : (
-              <p className="text-neutral-700 mb-6">{formData.bio}</p>
+              <p className="text-neutral-700 mb-6">{formData.bio || 'No bio yet. Edit your profile to add one.'}</p>
             )}
 
             {/* Stats Grid */}
@@ -126,7 +236,7 @@ export default function ProfilePage() {
                 <div className="w-10 h-10 bg-primary-500 rounded-lg flex items-center justify-center mx-auto mb-2">
                   <BookOpen className="text-white w-6 h-6" />
                 </div>
-                <p className="text-2xl font-bold text-primary-600">24</p>
+                <p className="text-2xl font-bold text-primary-600">{readingStats.total_read}</p>
                 <p className="text-sm text-neutral-600">Books Read</p>
               </div>
 
@@ -134,7 +244,7 @@ export default function ProfilePage() {
                 <div className="w-10 h-10 bg-secondary-500 rounded-lg flex items-center justify-center mx-auto mb-2">
                   <Heart className="text-white w-6 h-6" />
                 </div>
-                <p className="text-2xl font-bold text-secondary-600">156</p>
+                <p className="text-2xl font-bold text-secondary-600">{readingStats.total_favorites}</p>
                 <p className="text-sm text-neutral-600">Favorites</p>
               </div>
 
@@ -142,16 +252,16 @@ export default function ProfilePage() {
                 <div className="w-10 h-10 bg-success-500 rounded-lg flex items-center justify-center mx-auto mb-2">
                   <MessageCircle className="text-white w-6 h-6" />
                 </div>
-                <p className="text-2xl font-bold text-success-600">48</p>
-                <p className="text-sm text-neutral-600">Reviews</p>
+                <p className="text-2xl font-bold text-success-600">{readingStats.total_rated}</p>
+                <p className="text-sm text-neutral-600">Ratings</p>
               </div>
 
               <div className="bg-purple-50 rounded-lg p-4 text-center">
                 <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center mx-auto mb-2">
                   <Award className="text-white w-6 h-6" />
                 </div>
-                <p className="text-2xl font-bold text-purple-600">12</p>
-                <p className="text-sm text-neutral-600">Badges</p>
+                <p className="text-2xl font-bold text-purple-600">{readingStats.average_rating.toFixed(1)}</p>
+                <p className="text-sm text-neutral-600">Avg Rating</p>
               </div>
             </div>
           </div>
@@ -166,12 +276,12 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-neutral-900 mb-2">
-                    Full Name
+                    First Name
                   </label>
                   <input
                     type="text"
-                    name="fullName"
-                    value={formData.fullName}
+                    name="first_name"
+                    value={formData.first_name}
                     onChange={handleInputChange}
                     className="input w-full"
                   />
@@ -179,12 +289,12 @@ export default function ProfilePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-neutral-900 mb-2">
-                    Email Address
+                    Last Name
                   </label>
                   <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
+                    type="text"
+                    name="last_name"
+                    value={formData.last_name}
                     onChange={handleInputChange}
                     className="input w-full"
                   />
@@ -192,15 +302,14 @@ export default function ProfilePage() {
 
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-neutral-900 mb-2">
-                    Location
+                    Bio
                   </label>
-                  <input
-                    type="text"
-                    name="location"
-                    value={formData.location}
+                  <textarea
+                    name="bio"
+                    value={formData.bio}
                     onChange={handleInputChange}
-                    placeholder="City, Country"
-                    className="input w-full"
+                    placeholder="Tell us about yourself..."
+                    className="input w-full h-24 resize-none"
                   />
                 </div>
               </div>
@@ -208,21 +317,117 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {/* Reading Goals Section */}
+        <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg p-8 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-neutral-900">2026 Reading Goal</h2>
+            {!isEditingGoal && (
+              <button
+                onClick={() => setIsEditingGoal(true)}
+                className="btn btn-primary text-sm"
+              >
+                Edit Goal
+              </button>
+            )}
+          </div>
+
+          {isEditingGoal ? (
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-neutral-900 mb-2">
+                  Books to Read This Year
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    value={goalCount}
+                    onChange={(e) => setGoalCount(parseInt(e.target.value) || 0)}
+                    className="input flex-1"
+                  />
+                  <button
+                    onClick={handleSaveReadingGoal}
+                    disabled={isSavingGoal}
+                    className="btn btn-primary"
+                  >
+                    {isSavingGoal ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setIsEditingGoal(false)}
+                    className="btn btn-outline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-lg font-bold text-neutral-900">
+                    {readingStats.total_read} / {readingGoal?.goal_count || 50} books
+                  </span>
+                  <span className="text-sm font-medium text-neutral-600">
+                    {readingGoal ? Math.round((readingStats.total_read / readingGoal.goal_count) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-neutral-200 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-primary-500 to-secondary-500 h-full transition-all duration-500"
+                    style={{
+                      width: `${
+                        readingGoal
+                          ? Math.min((readingStats.total_read / readingGoal.goal_count) * 100, 100)
+                          : 0
+                      }%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+              <p className="text-sm text-neutral-600">
+                {readingGoal && readingStats.total_read < readingGoal.goal_count
+                  ? `Keep going! ${readingGoal.goal_count - readingStats.total_read} more to go.`
+                  : readingGoal && readingStats.total_read >= readingGoal.goal_count
+                  ? '🎉 Goal achieved! Great job!'
+                  : 'Set a goal to get started.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Share Stats Section */}
+        <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg p-8 mb-8">
+          <h2 className="text-2xl font-bold text-neutral-900 mb-4">Share Your Stats</h2>
+          <p className="text-neutral-600 mb-4">
+            Let your friends know about your reading progress on BookHub!
+          </p>
+          <button
+            onClick={handleShareStats}
+            className="btn btn-primary w-full flex items-center justify-center gap-2"
+          >
+            📤 Share Reading Stats
+          </button>
+          {shareMessage && (
+            <p className="mt-3 text-sm text-success-600 font-medium">{shareMessage}</p>
+          )}
+        </div>
+
         {/* Content Tabs */}
         <div className="bg-white rounded-2xl border border-neutral-200 shadow-lg overflow-hidden">
           {/* Tab Navigation */}
           <div className="border-b border-neutral-200 flex overflow-x-auto">
             <button className="flex-1 px-6 py-4 text-center font-medium text-primary-500 border-b-2 border-primary-500 hover:text-primary-600">
               <BookOpen className="w-5 h-5 inline mr-2" />
-              My Library (24)
+              My Library ({readingStats.total_read})
             </button>
             <button className="flex-1 px-6 py-4 text-center font-medium text-neutral-600 hover:text-neutral-900">
               <Heart className="w-5 h-5 inline mr-2" />
-              Favorites (156)
+              Favorites ({readingStats.total_favorites})
             </button>
             <button className="flex-1 px-6 py-4 text-center font-medium text-neutral-600 hover:text-neutral-900">
               <MessageCircle className="w-5 h-5 inline mr-2" />
-              Reviews (48)
+              Ratings ({readingStats.total_rated})
             </button>
           </div>
 

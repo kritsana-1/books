@@ -109,18 +109,27 @@ const MOCK_BOOKS: Book[] = [
 export default function BookGrid({ category }: BookGridProps) {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchBooks = async () => {
+      setLoading(true);
+      setError(null);
+
       try {
-        // TODO: Replace with actual API call
-        // const data = await getBooks({ category });
-        // setBooks(data || []);
-        
-        // For now, use mock data
+        // Call Supabase through shared function
+        const data = await getBooks({ category });
+
+        if (data && Array.isArray(data) && data.length > 0) {
+          setBooks(data as Book[]);
+        } else {
+          // Fallback to mock data if no rows returned
+          setBooks(MOCK_BOOKS);
+        }
+      } catch (fetchError) {
+        console.error('Error fetching books:', fetchError);
+        setError('Unable to load books right now. Showing fallback data.');
         setBooks(MOCK_BOOKS);
-      } catch (error) {
-        console.error('Error fetching books:', error);
       } finally {
         setLoading(false);
       }
@@ -144,7 +153,13 @@ export default function BookGrid({ category }: BookGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <>
+      {error && (
+        <div className="mb-4 p-4 bg-error-50 border border-error-200 text-error-700 rounded-lg">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       {books.map((book) => (
         <Link key={book.book_id} href={`/books/${book.book_id}`}>
           <div className="card group overflow-hidden transition-all duration-300 hover:shadow-lg cursor-pointer h-full">
@@ -218,5 +233,6 @@ export default function BookGrid({ category }: BookGridProps) {
         </Link>
       ))}
     </div>
+  </>
   );
 }

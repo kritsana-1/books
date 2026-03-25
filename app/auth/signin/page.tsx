@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Heart, Github, Mail, Lock, User, ArrowRight } from 'react-icons/fa';
+import { signInWithEmail, signInWithGoogle, signInWithGithub } from '@/lib/supabase';
+import { Heart, Mail, Lock, ArrowRight } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
+import { FaGithub } from 'react-icons/fa';
 
 export default function SignIn() {
   const router = useRouter();
@@ -19,14 +21,16 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual Supabase sign-in call
-      // const { error } = await signInWithEmail(email, password);
-      // if (error) throw error;
-      
-      console.log('Sign in with:', email, password);
-      // router.push('/');
+      if (!email || !password) {
+        setError('Please enter both email and password');
+        setIsLoading(false);
+        return;
+      }
+
+      await signInWithEmail(email, password);
+      router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign in');
+      setError(err instanceof Error ? err.message : 'Failed to sign in. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -37,15 +41,10 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual Supabase OAuth call
-      // const { error } = await signInWithGoogle();
-      // if (error) throw error;
-      
-      console.log('Sign in with Google');
-      // router.push('/');
+      await signInWithGoogle();
+      router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign in');
-    } finally {
+      setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
       setIsLoading(false);
     }
   };
@@ -55,15 +54,10 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual Supabase OAuth call
-      // const { error } = await signInWithGithub();
-      // if (error) throw error;
-      
-      console.log('Sign in with GitHub');
-      // router.push('/');
+      await signInWithGithub();
+      router.push('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sign in');
-    } finally {
+      setError(err instanceof Error ? err.message : 'Failed to sign in with GitHub');
       setIsLoading(false);
     }
   };
@@ -169,7 +163,7 @@ export default function SignIn() {
               disabled={isLoading}
               className="btn btn-outline flex items-center justify-center gap-2"
             >
-              <Github className="w-5 h-5" />
+              <FaGithub className="w-5 h-5" />
               <span className="hidden sm:inline">GitHub</span>
             </button>
           </div>

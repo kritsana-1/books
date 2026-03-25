@@ -2,12 +2,25 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { Heart, MessageCircle, Share2, Download, MapPin } from 'react-icons/fa';
+import { Heart, Share2, Download } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import {
+  getBookById,
+  getComments,
+  addComment,
+  likeBook,
+  unlikeBook,
+  isBookLiked,
+  getUserBookRating,
+  submitBookRating,
+  getUserBookStatus,
+  setBookFavorite,
+  setBookRead,
+} from '@/lib/supabase';
 import type { Book } from '@/lib/types';
 
 // Mock book data
-const MOCK_BOOKS: Record<number, Book> = {
-  1: {
+const MOCK_BOOKS: Record<number, any> = {  1: {
     book_id: 1,
     title: 'Atomic Habits',
     isbn: '9780735211292',
@@ -32,8 +45,8 @@ const MOCK_BOOKS: Record<number, Book> = {
       },
     ],
     categories: [
-      { category_id: 1, name: 'Self-Help', color: '#3B82F6' },
-      { category_id: 2, name: 'Productivity', color: '#10B981' },
+      { category_id: 1, name: 'Self-Help' },
+      { category_id: 2, name: 'Productivity' },
     ],
     stats: {
       total_likes: 2456,
@@ -49,16 +62,109 @@ export default function BookDetail() {
   const params = useParams();
   const bookId = parseInt(params.id as string);
   const [book, setBook] = useState<Book | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentText, setCommentText] = useState('');
   const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isRead, setIsRead] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [ratingFeedback, setRatingFeedback] = useState<string | null>(null);
+  const [submittingRating, setSubmittingRating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const { profile } = useAuth();
 
   useEffect(() => {
-    // TODO: Replace with actual API call
-    // const book = await getBookById(bookId);
-    
-    setBook(MOCK_BOOKS[bookId] || null);
-    setLoading(false);
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const fetchedBook = await getBookById(bookId);
+        const fallbackBook = (MOCK_BOOKS[bookId] as Book) || null;
+      setBook((fetchedBook as Book) || fallbackBook);
+
+      if (fetchedBook?.stats) {
+        setLikeCount(fetchedBook.stats.total_likes);
+      } else if (fallbackBook?.stats) {
+          setLikeCount(MOCK_BOOKS[bookId].stats.total_likes);
+        }
+      } catch (err) {
+        console.error('Error loading book:', err);
+        setBook(MOCK_BOOKS[bookId] || null);
+        if (MOCK_BOOKS[bookId]?.stats) setLikeCount(MOCK_BOOKS[bookId].stats.total_likes);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, [bookId]);
+
+  useEffect(() => {
+    const loadComments = async () => {
+      setCommentsLoading(true);
+      try {
+        const fetchedComments = await getComments(bookId);
+        setComments(Array.isArray(fetchedComments) ? fetchedComments : []);
+      } catch (err) {
+        console.error('Error loading comments:', err);
+        setComments([]);
+      } finally {
+        setCommentsLoading(false);
+      }
+    };
+
+    loadComments();
+  }, [bookId]);
+
+  useEffect(() => {
+    const loadLike = async () => {
+      if (!profile) return;
+
+      try {
+        const liked = await isBookLiked(profile.user_id, bookId);
+        setIsLiked(liked);
+      } catch (err) {
+        console.error('Failed to query like status:', err);
+      }
+    };
+
+    const loadStatus = async () => {
+      if (!profile) return;
+
+      try {
+        const status = await getUserBookStatus(profile.user_id, bookId);
+        setIsFavorite(status.is_favorite);
+        setIsRead(status.is_read);
+      } catch (err) {
+        console.error('Failed to get userbook status:', err);
+      }
+    };
+
+    loadLike();
+    loadStatus();
+  }, [bookId, profile]);
+
+  useEffect(() => {
+    const loadUserRating = async () => {
+      if (!profile) return;
+
+      try {
+        const rating = await getUserBookRating(profile.user_id, bookId);
+        if (rating !== null && rating !== undefined) {
+          setUserRating(Number(rating));
+        }
+      } catch (err) {
+        console.error('Failed to get user rating:', err);
+      }
+    };
+
+    loadUserRating();
+  }, [bookId, profile]);
 
   if (loading) {
     return (
@@ -113,13 +219,92 @@ export default function BookDetail() {
             {/* Action Buttons */}
             <div className="space-y-3 mb-6">
               <button
-                onClick={() => setIsLiked(!isLiked)}
+                onClick={async () => {
+                  if (!profile) {
+                    alert('Please sign in to like this book.');
+                    return;
+                  }
+
+                  if (isLiked) {
+                    try {
+                      await unlikeBook(profile.user_id, book.book_id);
+                      setIsLiked(false);
+                      setLikeCount((c) => Math.max(0, c - 1));
+                    } catch (err) {
+                      console.error('Failed to unlike book:', err);
+                    }
+                  } else {
+                    try {
+                      await likeBook(profile.user_id, book.book_id);
+                      setIsLiked(true);
+                      setLikeCount((c) => c + 1);
+                    } catch (err) {
+                      console.error('Failed to like book:', err);
+                    }
+                  }
+                }}
                 className={`w-full btn ${
                   isLiked ? 'btn-primary' : 'btn-outline'
                 } flex items-center justify-center gap-2`}
               >
                 <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
                 {isLiked ? 'Liked' : 'Like'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!profile) {
+                    setStatusFeedback('Please sign in to favorite this book.');
+                    return;
+                  }
+
+                  setStatusLoading(true);
+                  setStatusFeedback(null);
+
+                  try {
+                    const nextFavorite = !isFavorite;
+                    await setBookFavorite(profile.user_id, book.book_id, nextFavorite);
+                    setIsFavorite(nextFavorite);
+                    setStatusFeedback(nextFavorite ? 'Added to favorites.' : 'Removed from favorites.');
+                  } catch (err) {
+                    console.error('Failed to update favorite status:', err);
+                    setStatusFeedback('Unable to update favorite status.');
+                  } finally {
+                    setStatusLoading(false);
+                  }
+                }}
+                className={`w-full btn ${isFavorite ? 'btn-secondary' : 'btn-outline'} flex items-center justify-center gap-2`}
+                disabled={statusLoading}
+              >
+                {isFavorite ? '★ Favorited' : '☆ Favorite'}
+              </button>
+
+              <button
+                onClick={async () => {
+                  if (!profile) {
+                    setStatusFeedback('Please sign in to track your reading status.');
+                    return;
+                  }
+
+                  setStatusLoading(true);
+                  setStatusFeedback(null);
+
+                  try {
+                    const nextRead = !isRead;
+                    await setBookRead(profile.user_id, book.book_id, nextRead);
+                    setIsRead(nextRead);
+                    setStatusFeedback(nextRead ? 'Marked as read.' : 'Marked as want to read.');
+                  } catch (err) {
+                    console.error('Failed to update read status:', err);
+                    setStatusFeedback('Unable to update read status.');
+                  } finally {
+                    setStatusLoading(false);
+                  }
+                }}
+                className={`w-full btn ${isRead ? 'btn-success' : 'btn-outline'} flex items-center justify-center gap-2`}
+                disabled={statusLoading}
+              >
+                {isRead ? '📚 Read' : '📘 Want to read'}
               </button>
 
               <button className="w-full btn btn-primary flex items-center justify-center gap-2">
@@ -131,6 +316,9 @@ export default function BookDetail() {
                 <Share2 className="w-5 h-5" />
                 Share
               </button>
+              {statusFeedback && (
+                <p className="mt-2 text-sm text-neutral-700">{statusFeedback}</p>
+              )}
             </div>
 
             {/* Info Card */}
@@ -146,7 +334,7 @@ export default function BookDetail() {
               <div>
                 <p className="text-xs text-neutral-500 uppercase tracking-wide">Published</p>
                 <p className="text-sm text-neutral-900">
-                  {new Date(book.publication_date).toLocaleDateString()}
+                  {book.publication_date ? new Date(book.publication_date).toLocaleDateString() : 'N/A'}
                 </p>
               </div>
               <div>
@@ -196,7 +384,7 @@ export default function BookDetail() {
                     <p className="text-neutral-600 text-sm">{book.stats.total_comments} reviews</p>
                   </div>
                   <div className="ml-auto text-right">
-                    <p className="text-neutral-900 font-medium">{book.stats.total_likes}</p>
+                    <p className="text-neutral-900 font-medium">{likeCount}</p>
                     <p className="text-neutral-600 text-sm">people like this</p>
                   </div>
                 </div>
@@ -255,6 +443,157 @@ export default function BookDetail() {
                 </div>
               </section>
             )}
+
+            {/* Submit Rating */}
+            <section className="mb-8 bg-white p-6 rounded-lg border border-neutral-200">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-neutral-900">Your Rating</h2>
+                <span className="text-sm text-neutral-500">
+                  {userRating ? `Your last: ${userRating}★` : 'Not rated yet'}
+                </span>
+              </div>
+              <div className="flex gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <button
+                    key={rating}
+                    onClick={() => setUserRating(rating)}
+                    className={`px-3 py-2 rounded-full border transition-all ${
+                      userRating === rating
+                        ? 'bg-secondary-500 text-white border-secondary-500'
+                        : 'bg-neutral-100 text-neutral-700 border-neutral-300 hover:bg-neutral-200'
+                    }`}
+                  >
+                    {rating}★
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={async () => {
+                  if (!profile) {
+                    setRatingFeedback('Please log in to rate books.');
+                    return;
+                  }
+
+                  if (!userRating) {
+                    setRatingFeedback('Select a rating before submitting.');
+                    return;
+                  }
+
+                  setSubmittingRating(true);
+                  setRatingFeedback(null);
+
+                  try {
+                    const { totalRatings, averageRating } = await submitBookRating(
+                      profile.user_id,
+                      book.book_id,
+                      userRating
+                    );
+
+                    setBook((prev) => {
+                      if (!prev) return prev;
+                      const updatedStats = {
+                        total_likes: prev.stats?.total_likes ?? 0,
+                        total_ratings: totalRatings,
+                        average_rating: averageRating,
+                        total_comments: prev.stats?.total_comments ?? 0,
+                        total_owners: prev.stats?.total_owners ?? 0,
+                      };
+
+                      return {
+                        ...prev,
+                        stats: updatedStats,
+                      };
+                    });
+
+                    setRatingFeedback('Thanks! Your rating has been submitted.');
+                  } catch (err) {
+                    console.error('Error submitting rating:', err);
+                    setRatingFeedback('Unable to submit rating. Please try again later.');
+                  } finally {
+                    setSubmittingRating(false);
+                  }
+                }}
+                className="btn btn-primary"
+                disabled={submittingRating}
+              >
+                {submittingRating ? 'Submitting...' : 'Submit Rating'}
+              </button>
+              {ratingFeedback && <p className="text-sm text-neutral-600 mt-3">{ratingFeedback}</p>}
+            </section>
+
+            {/* Comments */}
+            <section className="bg-white p-6 rounded-lg border border-neutral-200">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-bold text-neutral-900">Comments</h2>
+                <span className="text-sm text-neutral-500">{comments.length} comments</span>
+              </div>
+
+              {profile ? (
+                <div className="mb-4">
+                  <textarea
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    rows={4}
+                    placeholder="Leave your comment..."
+                    className="w-full border border-neutral-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  <div className="flex justify-end mt-2 gap-2">
+                    <button
+                      onClick={() => setCommentText('')}
+                      disabled={submittingComment}
+                      className="btn btn-outline"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!commentText.trim() || !profile) return;
+                        setSubmittingComment(true);
+                        setCommentError(null);
+                        try {
+                          const newComment = await addComment(book.book_id, profile.user_id, commentText.trim());
+                          setComments((prev) => [newComment, ...prev]);
+                          setCommentText('');
+                        } catch (err) {
+                          console.error('Error adding comment:', err);
+                          setCommentError('Failed to submit comment.');
+                        } finally {
+                          setSubmittingComment(false);
+                        }
+                      }}
+                      className="btn btn-primary"
+                      disabled={submittingComment || !commentText.trim()}
+                    >
+                      {submittingComment ? 'Posting...' : 'Post Comment'}
+                    </button>
+                  </div>
+                  {commentError && <p className="text-error-500 text-sm mt-2">{commentError}</p>}
+                </div>
+              ) : (
+                <p className="text-sm text-neutral-600 mb-4">Sign in to post a comment.</p>
+              )}
+
+              {commentsLoading ? (
+                <div className="py-8 text-center text-neutral-500">Loading comments...</div>
+              ) : comments.length === 0 ? (
+                <div className="py-8 text-center text-neutral-500">No comments yet, be the first.</div>
+              ) : (
+                <ul className="space-y-4">
+                  {comments.map((comment) => (
+                    <li key={comment.comment_id} className="border border-neutral-200 rounded-lg p-4">
+                      <div className="flex justify-between items-start gap-4">
+                        <div>
+                          <p className="font-semibold text-neutral-900">{comment.user?.username ?? 'Anonymous'}</p>
+                          <p className="text-neutral-500 text-xs">{new Date(comment.created_at).toLocaleString()}</p>
+                        </div>
+                        <div className="text-sm text-neutral-400">{comment.like_count ?? 0} likes</div>
+                      </div>
+                      <p className="text-neutral-700 mt-2">{comment.comment_text}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
             {/* Where to Buy */}
             <section className="bg-white p-6 rounded-lg border border-neutral-200">

@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search, SlidersHorizontal, X } from 'react-icons/fa';
+import { FaSearch, FaSlidersH, FaTimes } from 'react-icons/fa';
 import BookCard from '@/components/books/BookCard';
+import { getBooks } from '@/lib/supabase';
 import type { Book } from '@/lib/types';
 
 // Mock books data
@@ -168,61 +169,76 @@ export default function BooksPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [priceRange, setPriceRange] = useState([0, 30]);
   const [ratingFilter, setRatingFilter] = useState(0);
+  const [isFetching, setIsFetching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Apply filters and sorting
+  // Load URL query defaults (optional)
+  useEffect(() => {
+    const search = searchParams.get('search') || '';
+    const category = searchParams.get('category') || 'All';
+    const sort = searchParams.get('sort') || 'relevance';
+
+    setSearchQuery(search);
+    setSelectedCategory(CATEGORIES.includes(category) ? category : 'All');
+    setSelectedSort(SORT_OPTIONS.some((opt) => opt.value === sort) ? sort : 'relevance');
+  }, [searchParams]);
+
+  // Fetch books from Supabase based on filters
+  useEffect(() => {
+    const fetchBooks = async () => {
+      setIsFetching(true);
+      setError(null);
+
+      try {
+        const filterPayload: Record<string, string> = {};
+
+        if (selectedCategory !== 'All') {
+          filterPayload.category = selectedCategory.toLowerCase();
+        }
+
+        if (searchQuery.trim()) {
+          filterPayload.search = searchQuery.trim();
+        }
+
+        if (selectedSort !== 'relevance') {
+          filterPayload.sort = selectedSort;
+        }
+
+        const data = await getBooks(filterPayload);
+
+        if (Array.isArray(data) && data.length > 0) {
+          setBooks(data as Book[]);
+        } else {
+          setBooks(MOCK_BOOKS);
+        }
+      } catch (fetchError) {
+        console.error('Failed to load books from Supabase', fetchError);
+        setError('Unable to load books at the moment. Showing fallback data.');
+        setBooks(MOCK_BOOKS);
+      } finally {
+        setIsFetching(false);
+      }
+    };
+
+    fetchBooks();
+  }, [selectedCategory, selectedSort, searchQuery]);
+
+  // Apply client-side secondary filters, price range, rating
   useEffect(() => {
     let result = books;
 
-    // Filter by search query
-    if (searchQuery) {
-      result = result.filter(
-        (book) =>
-          book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          book.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Filter by category
-    if (selectedCategory !== 'All') {
-      result = result.filter((book) =>
-        book.categories?.some((cat) => cat.name === selectedCategory)
-      );
-    }
-
     // Filter by price range
-    result = result.filter((book) => book.price && book.price >= priceRange[0] && book.price <= priceRange[1]);
+    result = result.filter((book) =>
+      book.price !== undefined && book.price !== null && book.price >= priceRange[0] && book.price <= priceRange[1]
+    );
 
-    // Filter by rating
+    // Rating filter
     if (ratingFilter > 0) {
-      result = result.filter((book) => book.stats && book.stats.average_rating >= ratingFilter);
-    }
-
-    // Sort results
-    switch (selectedSort) {
-      case 'newest':
-        result.sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        break;
-      case 'rating':
-        result.sort((a, b) => (b.stats?.average_rating || 0) - (a.stats?.average_rating || 0));
-        break;
-      case 'popular':
-        result.sort((a, b) => (b.stats?.total_likes || 0) - (a.stats?.total_likes || 0));
-        break;
-      case 'price-low':
-        result.sort((a, b) => (a.price || 0) - (b.price || 0));
-        break;
-      case 'price-high':
-        result.sort((a, b) => (b.price || 0) - (a.price || 0));
-        break;
-      default: // relevance
-        // Keep original order or implement relevance scoring
-        break;
+      result = result.filter((book) => (book.stats?.average_rating || 0) >= ratingFilter);
     }
 
     setFilteredBooks(result);
-  }, [books, searchQuery, selectedCategory, selectedSort, priceRange, ratingFilter]);
+  }, [books, priceRange, ratingFilter]);
 
   return (
     <div className="min-h-screen bg-neutral-50 pt-20">
@@ -240,7 +256,7 @@ export default function BooksPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {/* Search Input */}
             <div className="sm:col-span-2 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
               <input
                 type="text"
                 placeholder="Search books by title, author, or keyword..."
@@ -288,7 +304,7 @@ export default function BooksPage() {
             onClick={() => setShowFilters(!showFilters)}
             className="mt-4 flex items-center gap-2 text-primary-500 hover:text-primary-600 font-medium"
           >
-            <SlidersHorizontal className="w-4 h-4" />
+            <FaSlidersH className="w-4 h-4" />
             {showFilters ? 'Hide' : 'Show'} Advanced Filters
           </button>
         </div>
@@ -339,27 +355,40 @@ export default function BooksPage() {
         )}
 
         {/* Results Info */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+            {error}
+          </div>
+        )}
         <div className="flex items-center justify-between mb-6">
           <p className="text-neutral-600">
             Showing <span className="font-bold">{filteredBooks.length}</span> results
           </p>
-          {(searchQuery || selectedCategory !== 'All' || ratingFilter > 0) && (
+          {(searchQuery || selectedCategory !== 'All' || ratingFilter > 0 || selectedSort !== 'relevance') && (
             <button
               onClick={() => {
                 setSearchQuery('');
                 setSelectedCategory('All');
+                setSelectedSort('relevance');
                 setRatingFilter(0);
+                setPriceRange([0, 30]);
               }}
               className="text-primary-500 hover:text-primary-600 font-medium flex items-center gap-2"
             >
-              <X className="w-4 h-4" />
+              <FaTimes className="w-4 h-4" />
               Clear Filters
             </button>
           )}
         </div>
 
         {/* Books Grid */}
-        {filteredBooks.length > 0 ? (
+        {isFetching ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, index) => (
+              <div key={index} className="card h-80 animate-pulse bg-neutral-100" />
+            ))}
+          </div>
+        ) : filteredBooks.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredBooks.map((book) => (
               <BookCard key={book.book_id} book={book} />
